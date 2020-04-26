@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>open_manipulator_find_object_2d</name>
+  <version>1.0.0</version>
+  <description>
+    Application of OpenManipulator
+  </description>
+  <license>Apache 2.0</license>
+  <author email="test@test.com">test</author>
+  <maintainer email="test@test.com">test</maintainer>
+  <url type="website">http://wiki.ros.org/open_manipulator_description</url>
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>rospy</depend>  
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>open_manipulator_msgs</depend> 
+  <depend>tf</depend>
+  <depend>gazebo_ros</depend>
+  <depend>gazebo_ros_control</depend>
+  <depend>controller_manager</depend>  
+  <depend>xacro</depend>
+  <depend>urdf</depend>     
+  <depend>find_object_2d</depend>  
+  <export>
+    <gazebo_ros gazebo_media_path="${prefix}"/>
+    <gazebo_ros gazebo_model_path="${prefix}/models"/>
+  </export>  
+</package>

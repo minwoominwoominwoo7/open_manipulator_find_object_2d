@@ -1,0 +1,4 @@
+<launch>
+  <param name="robot_description"
+         command="$(find xacro)/xacro --inorder '$(find open_manipulator_find_object_2d)/urdf/open_manipulator_with_d435_robot.urdf.xacro'"/>         
+</launch>

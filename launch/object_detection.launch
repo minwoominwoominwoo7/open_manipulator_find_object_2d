@@ -1,0 +1,61 @@
+<launch>
+  <arg name="use_platform"	   default="true" />
+  <arg name="use_state_publisher" default="true"/>
+  <arg name="open_rviz"           default="true"/>
+  <arg name="marker_frame_id"     default="world"/>
+  <arg name="user_marker_size"	  default="5.0"/>
+
+  <arg name="camera_model" default="astra_pro" doc="model type [astra_pro, realsense_d435, raspicam]"/>
+  <arg name="camera_namespace" default="camera"/>
+  <arg name="rgb_camera_info_url"   default="package://open_manipulator_camera/camera_info/$(arg camera_model).yaml" />
+  <arg name="depth_camera_info_url" default="" />
+
+  <group if="$(arg use_platform)">
+
+    <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+        <arg name="camera"                value="$(arg camera_namespace)"/>
+        <arg name="enable_pointcloud"     value="false" />
+    </include>
+
+    <group if="$(arg use_state_publisher)">
+      <param name="robot_description"
+            command="$(find xacro)/xacro --inorder '$(find open_manipulator_description)/urdf/open_manipulator_robot.urdf.xacro'"/>
+
+      <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher">
+        <rosparam param="source_list" subst_value="true">["joint_states"]</rosparam>
+      </node>
+
+      <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+    </group>      
+
+    <node pkg="tf" type="static_transform_publisher" name="camera_frame_to_realsense_frame"
+      args="0.070 0 0.052 0 0 0 link5 camera_link 10" />
+
+      <include file="$(find open_manipulator_find_object_2d)/launch/find_object.launch">
+      </include>
+
+  </group>
+
+  <group unless="$(arg use_platform)">
+
+    <group if="$(arg use_state_publisher)">
+      <param name="robot_description"
+            command="$(find xacro)/xacro --inorder '$(find open_manipulator_find_object_2d)/urdf/open_manipulator_with_d435_robot.urdf.xacro'"/>
+
+      <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher">
+        <rosparam param="source_list" subst_value="true">["joint_states"]</rosparam>
+      </node>
+
+      <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+    </group> 
+
+    <include file="$(find open_manipulator_find_object_2d)/launch/find_object.launch">
+    </include>
+
+  </group>
+
+  <group if="$(arg open_rviz)">
+    <node pkg="rviz" type="rviz" name="rviz" required="true"
+      args="-d $(find open_manipulator_find_object_2d)/rviz/find_object.rviz"/>
+  </group>
+</launch>

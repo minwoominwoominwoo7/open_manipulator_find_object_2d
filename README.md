@@ -1,0 +1,1 @@
+# open_manipulator_find_object_2d

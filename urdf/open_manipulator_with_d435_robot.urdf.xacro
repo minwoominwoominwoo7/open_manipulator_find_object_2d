@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<!-- Open_Manipulator Chain -->
+<robot name="open_manipulator" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- Import Rviz colors -->
+  <xacro:include filename="$(find open_manipulator_description)/urdf/materials.xacro" />
+
+  <!-- Import all Gazebo-customization elements, including Gazebo colors -->
+  <!--<xacro:include filename="$(find open_manipulator_description)/urdf/open_manipulator.gazebo.xacro" />-->
+  <xacro:include filename="$(find open_manipulator_find_object_2d)/urdf/open_manipulator_with_d435.gazebo.xacro" />
+
+  <!-- Import Transmission -->
+  <xacro:include filename="$(find open_manipulator_description)/urdf/open_manipulator.transmission.xacro" />
+
+  <!-- Import URDF -->
+  <xacro:include filename="$(find open_manipulator_description)/urdf/open_manipulator.urdf.xacro" />
+
+  <!-- Import DUMNY CAMERA URDF -->
+  <xacro:include filename="$(find open_manipulator_find_object_2d)/urdf/d435.urdf.xacro" /> 
+  <!--<xacro:include filename="$(find realsense2_description)/urdf/_d435.urdf.xacro" />-->
+
+  <!-- World -->
+  <link name="world"/>
+
+  <!-- World fixed joint-->
+  <joint name="world_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="world"/>
+    <child link="link1"/>
+  </joint>
+
+  <!-- dummy realsense camera -->
+  <joint name="dummy_camera_joint" type="fixed">
+    <axis xyz="0 0 0" />
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <!--<origin xyz="0.0149 0.0275 0" rpy="${M_PI/2} 0 ${M_PI/2}"/>-->
+    <parent link="camera_link"/>
+    <child link="dummy_camera_link"/>
+  </joint>
+
+</robot>
