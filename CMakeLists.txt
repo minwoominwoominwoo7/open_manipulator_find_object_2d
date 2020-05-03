@@ -68,6 +68,11 @@ catkin_install_python(PROGRAMS
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
+catkin_install_python(PROGRAMS
+  nodes/tracking
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
 install(DIRECTORY launch meshes rviz urdf models worlds config rviz 
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

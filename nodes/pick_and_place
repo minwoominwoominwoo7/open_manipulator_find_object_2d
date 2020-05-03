@@ -17,8 +17,6 @@
 # limitations under the License.
 ################################################################################
 
-# Authors: Leon Jung, [AuTURBO] Kihoon Kim (https://github.com/auturbo), Gilbert
-
 import rospy, roslaunch
 import numpy as np
 import subprocess
@@ -305,6 +303,8 @@ class PickAndPlace():
 
     def forwardObjectPosition( self, objectPosition, forward_distance ):
         resultPoint = Point()
+        if(abs(objectPosition.x) < 0.001) :
+            objectPosition.x = 0.001
         radian = math.atan(objectPosition.y/objectPosition.x)
         degree = math.degrees(radian)
         dist = forward_distance

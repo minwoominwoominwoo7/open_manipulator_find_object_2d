@@ -19,9 +19,23 @@ sudo apt-get install python-pyside
 5. Code install and build   
 https://github.com/minwoominwoominwoo7/open_manipulator_find_object_2d   
 
-## run 
+## run pick example at gazebo   
 roscore  
 roslaunch open_manipulator_find_object_2d open_manipulator_gazebo.launch   
+!!!!!!!press play button at gazebo bottom !!!!!!!    
 roslaunch open_manipulator_controller open_manipulator_controller.launch use_platform:=false   
 roslaunch open_manipulator_find_object_2d object_detection.launch use_platform:=false  
 rosrun open_manipulator_find_object_2d pick_and_place   
+
+[![Video Label](http://img.youtube.com/vi/l1xk4SyJRwM/0.jpg)](https://youtu.be/l1xk4SyJRwM?t=0s)   
+
+
+## run pick example at gazebo   
+roscore  
+roslaunch open_manipulator_find_object_2d open_manipulator_tracking_gazebo.launch gui:=true paused:=true  
+!!!!!!!press play button at gazebo bottom !!!!!!!   
+roslaunch open_manipulator_controller open_manipulator_controller.launch use_platform:=false   
+roslaunch open_manipulator_find_object_2d object_detection.launch use_platform:=false  
+rosrun open_manipulator_find_object_2d tracking   
+
+[![Video Label](http://img.youtube.com/vi/8QRUlfVLCyw/0.jpg)](https://youtu.be/8QRUlfVLCyw?t=0s)  

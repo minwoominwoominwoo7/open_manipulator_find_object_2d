@@ -1,0 +1,377 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+################################################################################
+# Copyright 2018 ROBOTIS CO., LTD.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+################################################################################
+import threading
+import rospy, roslaunch
+import numpy as np
+import subprocess
+import os
+import sys
+from enum import Enum
+from std_msgs.msg import UInt8, Float32MultiArray
+from tf.transformations import *
+import tf
+from PySide import QtCore, QtGui, QtOpenGL
+from sensor_msgs.msg import JointState, CameraInfo
+from geometry_msgs.msg import PoseStamped, Pose, Point
+from math import pow, atan2, sqrt
+from gazebo_msgs.msg import ModelState, ModelStates
+
+# Manipulator 
+from open_manipulator_msgs.msg import JointPosition
+from open_manipulator_msgs.msg import KinematicsPose
+from open_manipulator_msgs.msg import OpenManipulatorState
+from open_manipulator_msgs.srv import SetJointPosition
+from open_manipulator_msgs.srv import SetKinematicsPose
+from open_manipulator_msgs.srv import GetJointPosition
+from open_manipulator_msgs.srv import GetKinematicsPose
+from open_manipulator_msgs.srv import SetActuatorState
+
+MOVE_INIT = 0 
+MOVE_LEFT = 1 
+MOVE_RIGHT_UP = 2
+MOVE_LEFT_DOWN = 3  
+MOVE_FOWARD = 4 
+MOVE_BACKWARD = 5
+ 
+class TrakingObject():
+    def __init__(self):       
+
+        self.CurrentMode = Enum('CurrentMode', 
+                                   'init \
+                                    tracking_object')   
+
+        self.listener = tf.TransformListener()
+        self.jointStates = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        #self.kinematicsStates = [0.0, 0.0, 0.0]
+        self.open_manipulator_moving_state = "STOPPED"
+        self.current_mode = self.CurrentMode.init.value
+        self.objectPose = PoseStamped()
+        self.targetPose = PoseStamped()
+        self.is_triggered = False
+        self.currentToolPose = Pose()
+        self.imgHeight =  0 
+        self.imgWidth = 0
+        self.stateObject = MOVE_INIT
+       
+        self.set_joint_position = rospy.ServiceProxy('goal_joint_space_path', SetJointPosition)
+        self.set_kinematics_position = rospy.ServiceProxy('goal_task_space_path_position_only', SetKinematicsPose)
+        self.set_kinematics_position_from_present = rospy.ServiceProxy('goal_task_space_path_from_present_position_only', SetKinematicsPose)
+        self.set_joint_position_from_present = rospy.ServiceProxy('goal_joint_space_path_from_present', SetJointPosition)
+        self.set_actuator_state = rospy.ServiceProxy('set_actuator_state', SetActuatorState)
+        self.set_gripper_control = rospy.ServiceProxy('goal_tool_control', SetJointPosition)
+
+        self.open_manipulator_joint_states_sub_ = rospy.Subscriber('joint_states', JointState, self.jointStatesCallback)
+        self.open_manipulator_kinematics_pose_sub_ = rospy.Subscriber('gripper/kinematics_pose', KinematicsPose, self.kinematicsPoseCallback)
+        self.open_manipulator_states_sub = rospy.Subscriber('states', OpenManipulatorState, self.statesCallback)
+        self.object_sub = rospy.Subscriber('objects', Float32MultiArray, self.objectCallback)
+        self.camera_info_sub = rospy.Subscriber('/camera/rgb/camera_info', CameraInfo, self.cameraInfoCallback)
+
+        self.pub_model = rospy.Publisher('gazebo/set_model_state', ModelState, queue_size=1)                
+
+        thread = threading.Thread(target=self.movingObjectGazebo)
+        thread.start()
+
+        rospy.sleep(1)
+
+        # actuator enable 
+        self.actuatorTorque(True)
+        self.setInitPose()
+
+        loop_rate = rospy.Rate(10) # 10hz
+        
+        while not rospy.is_shutdown() :
+            if self.is_triggered == True:
+                self.fnControlNode()
+                pass
+            loop_rate.sleep() 
+
+    def fnControlNode(self):
+        if self.current_mode == self.CurrentMode.init.value:
+            rospy.loginfo("init mode")
+            if self.setInitPose() :
+                self.current_mode = self.CurrentMode.tracking_object.value
+                self.stateObject = MOVE_LEFT
+                rospy.loginfo("init pose ok")                  
+
+        elif self.current_mode == self.CurrentMode.tracking_object.value: 
+            self.trackingObject() 
+
+    def trackingObject(self):
+        #rospy.logwarn("move to object")
+        resp = False
+        end_effector_name = "gripper" 
+        planning_group = "gripper"        
+        kinematics_pose = KinematicsPose() 
+
+        object_detect_duration = rospy.get_rostime().to_sec() - self.objectPose.header.stamp.to_sec()
+        
+        if object_detect_duration > 1 :
+            rospy.logwarn("there is no object, last object detect time duration %.2f ",object_detect_duration )
+            rospy.sleep(0.1)
+            return resp
+
+        rospy.logwarn("target object xyz %.2f,%.2f,%.2f_tool position %.2f,%.2f,%.2f",
+                       self.objectPose.pose.position.x, self.objectPose.pose.position.y, self.objectPose.pose.position.z,
+                       self.currentToolPose.position.x, self.currentToolPose.position.y, self.currentToolPose.position.z ) 
+
+        if abs(self.objectPose.pose.position.y) < 0.02 :
+            kinematics_pose.pose.position.y = 0
+        else :
+            tempSign = self.checkSign(self.objectPose.pose.position.y )
+            if abs(self.objectPose.pose.position.y)  < 0.25 :
+                tempY  = abs(self.objectPose.pose.position.y)
+            else :
+                tempY  = 0.25
+            rospy.logwarn("tempY %.2f ",tempY)
+            kinematics_pose.pose.position.y =  tempSign * ( tempY *0.039 + 0.0002 )
+            # if self.objectPose.pose.position.y = 0.02 -> kinematics_pose.pose.position.y = 0.001
+            # if self.objectPose.pose.position.y = 0.25-> kinematics_pose.pose.position.y = 0.01
+
+
+        if self.objectPose.pose.position.z > 0.05 :
+            kinematics_pose.pose.position.z = 0.005
+        elif self.objectPose.pose.position.z < 0.03 :
+            kinematics_pose.pose.position.z = -0.005          
+
+        if self.objectPose.pose.position.x < 0.39 and self.currentToolPose.position.x > 0.05 and abs(self.currentToolPose.position.y) < 0.1 : 
+            kinematics_pose.pose.position.x = -0.01
+        elif self.objectPose.pose.position.x > 0.45 and self.currentToolPose.position.x < 0.13 :
+            kinematics_pose.pose.position.x = 0.01
+
+        rospy.logwarn("move from present xyz %.2f,%.2f,%.2f ", kinematics_pose.pose.position.x, \
+                       kinematics_pose.pose.position.y, kinematics_pose.pose.position.z )     
+
+        #return True    
+
+        operating_time = 0.2
+        try:
+            resp = self.set_kinematics_position_from_present(planning_group, end_effector_name, kinematics_pose, operating_time)            
+            print 'kinemetics resp1 {} time '.format(resp.is_planned, operating_time)
+            rospy.sleep(0.1)
+
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e
+            return False
+        return resp
+
+    def checkSign(self, value ):
+        if value == 0 :
+            return 0 
+        return abs(value)/value       
+
+    def objectCallback(self,msg):
+        # init position
+        obejectNumList = [15,16] 
+        #rospy.logwarn( 'objectCallback' )   
+        data = msg.data
+
+        for i in range(0,len(data),12):
+            id = int(data[i])
+
+            if id in obejectNumList : 
+                pass 
+            else:
+                rospy.loginfo("idle mode") 
+                continue                
+
+            objectWidth = data[i+1]
+            objectHeight = data[i+2]
+            qtHomography = QtGui.QTransform(data[i+3], data[i+4], data[i+5],
+					               data[i+6], data[i+7], data[i+8],
+					               data[i+9], data[i+10], data[i+11])
+            qtTopLeft = qtHomography.map(QtCore.QPointF(0,0));     
+            qtTopRight = qtHomography.map(QtCore.QPointF(objectWidth,0)); 
+            qtBottomLeft = qtHomography.map(QtCore.QPointF(0,objectHeight)); 
+            qtBottomRight = qtHomography.map(QtCore.QPointF(objectWidth,objectHeight)); 
+            centX = int(( qtTopLeft.x() + qtTopRight.x() + qtBottomLeft.x() + qtBottomRight.x() ) / 4)
+            centY = int(( qtTopLeft.y() + qtTopRight.y() + qtBottomLeft.y() + qtBottomRight.y() ) / 4)
+
+            '''rospy.loginfo("Object %d detected, CentX,Y ( %d , %d ) witdh ( %d , %d ),corners point at TopLeft (%.0f,%.0f) TopRight(%.0f,%.0f) BottomLeft(%.0f,%.0f) BottomRight(%.0f,%.0f)\n",
+                            id, centX, centY, objectWidth, objectWidth,
+                            qtTopLeft.x(), qtTopLeft.y(),
+                            qtTopRight.x(), qtTopRight.y(),
+                            qtBottomLeft.x(), qtBottomLeft.y(),
+                            qtBottomRight.x(), qtBottomRight.y())'''
+            try:
+                #(trans,rot) = self.listener.lookupTransform('link1', 'object_'+str(id), rospy.Time(0))
+                (trans,rot) = self.listener.lookupTransform('link5', 'object_'+str(id), rospy.Time(0))
+                self.objectPose.header.stamp = rospy.get_rostime()
+                self.objectPose.pose.position.x = trans[0]
+                self.objectPose.pose.position.y = trans[1]
+                self.objectPose.pose.position.z = trans[2]
+                #rospy.logwarn('ft of object_%s is  xyz( %.2f, %.2f, %.2f from link1 %.2f ', str(id), trans[0], trans[1], trans[2],self.objectPose.header.stamp.to_sec())   
+            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                rospy.logwarn('there is not tf of object_%s ' , str(id) )      
+
+    def actuatorTorque(self, enable):
+        rospy.logwarn("actuatorTorque")
+        joint_name = ['joint1','joint2','joint3','joint4','gripper']
+        try:                  
+            resp = self.set_actuator_state(enable)
+            rospy.sleep(1)
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e  
+            return False
+        if not resp :
+            rospy.loginfo("set_actuator enable fail")        
+        return resp
+
+    def setInitPose(self):
+        rospy.logwarn("setInitPose")
+        # init position
+        joint_position = JointPosition()
+        joint_position.joint_name = ['joint1','joint2','joint3','joint4']  
+        joint_position.position =  [0.0, -1.05, 0.35, 0.70]   
+        #joint_position.position =  [0.0, -1.791, 0.507, 1.438]     
+        resp = False    
+        try:    
+            path_time = 2                    
+            resp = self.set_joint_position("",joint_position, path_time)
+            rospy.sleep(path_time)
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e  
+        if not resp :
+            return False    
+        return True         
+
+    def kinematicsPoseCallback(self, msg):
+        self.currentToolPose.position.x = msg.pose.position.x
+        self.currentToolPose.position.y = msg.pose.position.y
+        self.currentToolPose.position.z = msg.pose.position.z
+        #rospy.logwarn(' kinematicsPoseCallback %.2f , %.2f, %.2f  ', self.kinematicsStates[0], self.kinematicsStates[1], self.kinematicsStates[2] )
+
+    def jointStatesCallback(self, msg):
+	    #rospy.logwarn('jointStatesCallback %d ', len(msg.position) )
+        self.is_triggered = True
+        for i, pose in enumerate(msg.position):
+            self.jointStates[i] = pose
+            #print 'boundingBoxe {} {} '.format(i, pose)            
+
+    def statesCallback(self, msg):	
+        self.open_manipulator_moving_state = msg.open_manipulator_moving_state
+
+    def cameraInfoCallback(self, msg):
+        self.imgHeight = msg.height
+        self.imgWidth = msg.width
+        #rospy.logwarn(' camera info height %.2f ,width  %.2f ', self.imgHeight, self.imgWidth )  
+
+    def moveStop(self):
+        rospy.logwarn("move stop")
+        resp = False
+        end_effector_name = "gripper" 
+        planning_group = "gripper"        
+        kinematics_pose = KinematicsPose()
+        operating_time = 0.1
+        try:
+            resp = self.set_kinematics_position_from_present(planning_group, end_effector_name, kinematics_pose, operating_time)            
+            print 'kinemetics resp1 {} time '.format(resp.is_planned, operating_time)
+            rospy.sleep(1)
+
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e
+            return False
+        return resp         
+
+    def movingObjectGazebo(self):
+        while not rospy.is_shutdown(): 
+            model = rospy.wait_for_message('gazebo/model_states', ModelStates)           
+            for i in range(len(model.name)):
+                if model.name[i] == 'object0':
+                    obstacle_1 = ModelState()
+                    obstacle_1.model_name = model.name[i]
+                    obstacle_1.pose = model.pose[i]   
+                    #rospy.loginfo("state %d , %.2f, %.2f, %.2f ", self.stateObject ,  obstacle_1.pose.position.x , 
+                    #                obstacle_1.pose.position.y ,  obstacle_1.pose.position.z )                                      
+                    if self.stateObject == MOVE_INIT:
+                        obstacle_1.pose.position.x  = 0.5
+                        obstacle_1.pose.position.y  = 0.0                       
+                        obstacle_1.pose.position.z  = 0.15     
+                                                   
+                    elif self.stateObject == MOVE_LEFT:
+                        obstacle_1.pose.position.x  = 0.5
+                        obstacle_1.pose.position.y -= 0.01                        
+                        obstacle_1.pose.position.z  = 0.15
+                        if obstacle_1.pose.position.y <= -0.25:
+                            self.stateObject = MOVE_RIGHT_UP
+
+                    elif self.stateObject == MOVE_RIGHT_UP:
+                        obstacle_1.pose.position.x  = 0.5
+
+                        if obstacle_1.pose.position.y > 0.25 :
+                            obstacle_1.pose.position.y += 0.0
+                        else :
+                            obstacle_1.pose.position.y += 0.01
+
+                        if obstacle_1.pose.position.z > 0.25 :
+                            obstacle_1.pose.position.z += 0.0
+                        else :
+                            obstacle_1.pose.position.z += 0.002                           
+                      
+                        if obstacle_1.pose.position.y >= 0.25 and obstacle_1.pose.position.z >= 0.25 :
+                            self.stateObject = MOVE_LEFT_DOWN
+
+                    elif self.stateObject == MOVE_LEFT_DOWN:
+                        obstacle_1.pose.position.x  = 0.5
+
+                        if obstacle_1.pose.position.y < 0.0 :
+                            obstacle_1.pose.position.y += 0.0
+                        else :
+                            obstacle_1.pose.position.y -= 0.01
+
+                        if obstacle_1.pose.position.z < 0.15 :
+                            obstacle_1.pose.position.z += 0.0
+                        else :
+                            obstacle_1.pose.position.z -= 0.002                           
+                
+                        if obstacle_1.pose.position.y <= 0.0 and obstacle_1.pose.position.z <= 0.15 :
+                            self.stateObject = MOVE_FOWARD
+
+                    elif self.stateObject == MOVE_FOWARD:
+                        if obstacle_1.pose.position.x < 0.35 :
+                            obstacle_1.pose.position.x += 0.0
+                        else :
+                            obstacle_1.pose.position.x -= 0.01                        
+                
+                        if obstacle_1.pose.position.x <= 0.35 :
+                            self.stateObject = MOVE_BACKWARD      
+
+                    elif self.stateObject == MOVE_BACKWARD:
+                        if obstacle_1.pose.position.x > 0.5 :
+                            obstacle_1.pose.position.x += 0.0
+                        else :
+                            obstacle_1.pose.position.x += 0.01                        
+                
+                        if obstacle_1.pose.position.x >= 0.5 :
+                            self.stateObject = MOVE_LEFT                                                         
+                    
+                    self.pub_model.publish(obstacle_1)
+
+                    rospy.sleep(0.1)                         
+
+def main():
+    rospy.init_node('tracking_controller')
+    rospy.loginfo("tracking_controller")
+    try:
+        trakingObject = TrakingObject()
+    except rospy.ROSInterruptException:
+        pass     
+    #rospy.spin()
+
+if __name__ == '__main__':
+    main()
