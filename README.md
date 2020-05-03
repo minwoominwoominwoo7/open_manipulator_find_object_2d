@@ -30,7 +30,7 @@ rosrun open_manipulator_find_object_2d pick_and_place
 [![Video Label](http://img.youtube.com/vi/l1xk4SyJRwM/0.jpg)](https://youtu.be/l1xk4SyJRwM?t=0s)   
 
 
-## run pick example at gazebo   
+## run tracking example at gazebo   
 roscore  
 roslaunch open_manipulator_find_object_2d open_manipulator_tracking_gazebo.launch gui:=true paused:=true  
 !!!!!!!press play button at gazebo bottom !!!!!!!   
