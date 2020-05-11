@@ -36,6 +36,15 @@ roslaunch open_manipulator_find_object_2d open_manipulator_tracking_gazebo.launc
 !!!!!!!press play button at gazebo bottom !!!!!!!   
 roslaunch open_manipulator_controller open_manipulator_controller.launch use_platform:=false   
 roslaunch open_manipulator_find_object_2d object_detection.launch use_platform:=false  
-rosrun open_manipulator_find_object_2d tracking   
+roslaunch open_manipulator_find_object_2d tracking.launch use_platform:=false     
 
-[![Video Label](http://img.youtube.com/vi/8QRUlfVLCyw/0.jpg)](https://youtu.be/8QRUlfVLCyw?t=0s)  
+[![Video Label](http://img.youtube.com/vi/8QRUlfVLCyw/0.jpg)](https://youtu.be/8QRUlfVLCyw?t=0s) 
+
+## run tracking example at real   
+roscore   
+roslaunch realsense2_camera rs_rgbd.launch     
+roslaunch open_manipulator_controller open_manipulator_controller.launch   
+roslaunch open_manipulator_find_object_2d object_detection.launch   
+roslaunch open_manipulator_find_object_2d tracking.launch    
+
+[![Video Label](http://img.youtube.com/vi/8QRUlfVLCyw/0.jpg)](https://youtu.be/rjLu_1BEWQ0?t=0s)   

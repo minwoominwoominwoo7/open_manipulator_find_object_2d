@@ -87,11 +87,16 @@
         <updateRate>30.0</updateRate>
         <cameraName>camera</cameraName>
         <frameName>camera_rgb_optical_frame</frameName>
-        <imageTopicName>rgb/image_raw</imageTopicName>
+        <!--<imageTopicName>rgb/image_raw</imageTopicName>
         <depthImageTopicName>depth/image_raw</depthImageTopicName>
         <pointCloudTopicName>depth/points</pointCloudTopicName>
         <cameraInfoTopicName>rgb/camera_info</cameraInfoTopicName>
-        <depthImageCameraInfoTopicName>depth/camera_info</depthImageCameraInfoTopicName>
+        <depthImageCameraInfoTopicName>depth/camera_info</depthImageCameraInfoTopicName>-->
+        <imageTopicName>color/image_raw</imageTopicName>
+        <depthImageTopicName>aligned_depth_to_color/image_raw</depthImageTopicName>
+        <pointCloudTopicName>depth_registered/points</pointCloudTopicName>
+        <cameraInfoTopicName>color/camera_info</cameraInfoTopicName>
+        <depthImageCameraInfoTopicName>aligned_depth_to_color/camera_info</depthImageCameraInfoTopicName>
         <pointCloudCutoff>0.1</pointCloudCutoff>
             <hackBaseline>0.07</hackBaseline>
             <distortionK1>0.0</distortionK1>

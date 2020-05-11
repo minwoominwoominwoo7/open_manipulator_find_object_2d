@@ -10,6 +10,7 @@
   <xacro:property name="r200_cam_rgb_px" value="0.005"/>
   <xacro:property name="r200_cam_rgb_py" value="0.018"/>
   <xacro:property name="r200_cam_rgb_pz" value="0.013"/>
+  <!--<xacro:property name="r200_cam_depth_offset" value="0.01"/>-->
   <xacro:property name="r200_cam_depth_offset" value="0.01"/>
 
   <!-- Link 1 -->

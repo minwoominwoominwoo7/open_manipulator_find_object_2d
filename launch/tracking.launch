@@ -1,0 +1,6 @@
+<launch>
+  <arg name="use_platform"	   default="true" />
+  <node pkg="open_manipulator_find_object_2d" type="tracking" name="tracking"  output="screen">
+     <param name="use_platform"  value="$(arg use_platform)"/>
+  </node>
+</launch>

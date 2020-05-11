@@ -42,6 +42,8 @@ from open_manipulator_msgs.srv import GetJointPosition
 from open_manipulator_msgs.srv import GetKinematicsPose
 from open_manipulator_msgs.srv import SetActuatorState
 
+import math 
+
 MOVE_INIT = 0 
 MOVE_LEFT = 1 
 MOVE_RIGHT_UP = 2
@@ -68,6 +70,7 @@ class TrakingObject():
         self.imgHeight =  0 
         self.imgWidth = 0
         self.stateObject = MOVE_INIT
+        self.use_platform = rospy.get_param("~use_platform","true") 
        
         self.set_joint_position = rospy.ServiceProxy('goal_joint_space_path', SetJointPosition)
         self.set_kinematics_position = rospy.ServiceProxy('goal_task_space_path_position_only', SetKinematicsPose)
@@ -117,7 +120,7 @@ class TrakingObject():
         resp = False
         end_effector_name = "gripper" 
         planning_group = "gripper"        
-        kinematics_pose = KinematicsPose() 
+        kinematics_pose = KinematicsPose()       
 
         object_detect_duration = rospy.get_rostime().to_sec() - self.objectPose.header.stamp.to_sec()
         
@@ -130,38 +133,46 @@ class TrakingObject():
                        self.objectPose.pose.position.x, self.objectPose.pose.position.y, self.objectPose.pose.position.z,
                        self.currentToolPose.position.x, self.currentToolPose.position.y, self.currentToolPose.position.z ) 
 
-        if abs(self.objectPose.pose.position.y) < 0.02 :
-            kinematics_pose.pose.position.y = 0
+        distOxy =  math.sqrt( self.objectPose.pose.position.x**2 + self.objectPose.pose.position.y**2 )
+        if distOxy > 1 :
+            return 
+        if self.use_platform :
+            radius = distOxy -0.15
         else :
-            tempSign = self.checkSign(self.objectPose.pose.position.y )
-            if abs(self.objectPose.pose.position.y)  < 0.25 :
-                tempY  = abs(self.objectPose.pose.position.y)
-            else :
-                tempY  = 0.25
-            rospy.logwarn("tempY %.2f ",tempY)
-            kinematics_pose.pose.position.y =  tempSign * ( tempY *0.039 + 0.0002 )
-            # if self.objectPose.pose.position.y = 0.02 -> kinematics_pose.pose.position.y = 0.001
-            # if self.objectPose.pose.position.y = 0.25-> kinematics_pose.pose.position.y = 0.01
+            radius = distOxy -0.3
+            if radius > 0.13 :
+                radius = 0.13 
+            elif radius < 0.05 :
+                radius = 0.05          
 
+        angle = math.atan2(self.objectPose.pose.position.y, self.objectPose.pose.position.x)           
 
-        if self.objectPose.pose.position.z > 0.05 :
-            kinematics_pose.pose.position.z = 0.005
-        elif self.objectPose.pose.position.z < 0.03 :
-            kinematics_pose.pose.position.z = -0.005          
+        rospy.logwarn("distObectxy %.2f , angle %.2f radius %.2f " , distOxy, angle, radius )
+        kinematics_pose.pose.position.x = math.cos(angle) * radius
+        kinematics_pose.pose.position.y = math.sin(angle) * radius
+        kinematics_pose.pose.position.z = self.objectPose.pose.position.z - 0.02
+        
+        if kinematics_pose.pose.position.z > 0.32 :
+            kinematics_pose.pose.position.z = 0.32
+        elif kinematics_pose.pose.position.z < 0.15 :
+            kinematics_pose.pose.position.z = 0.15
 
-        if self.objectPose.pose.position.x < 0.39 and self.currentToolPose.position.x > 0.05 and abs(self.currentToolPose.position.y) < 0.1 : 
-            kinematics_pose.pose.position.x = -0.01
-        elif self.objectPose.pose.position.x > 0.45 and self.currentToolPose.position.x < 0.13 :
-            kinematics_pose.pose.position.x = 0.01
+        moveDist = math.sqrt((kinematics_pose.pose.position.x - self.currentToolPose.position.x)**2 \
+                           + (kinematics_pose.pose.position.y - self.currentToolPose.position.y)**2 \
+                           + (kinematics_pose.pose.position.z - self.currentToolPose.position.z)**2 )
+        
+        operating_time = moveDist * 20  
+        if operating_time < 0.2:
+            operating_time = 0.2
+        elif operating_time > 5 :
+            operating_time = 5                         
 
-        rospy.logwarn("move from present xyz %.2f,%.2f,%.2f ", kinematics_pose.pose.position.x, \
-                       kinematics_pose.pose.position.y, kinematics_pose.pose.position.z )     
-
-        #return True    
-
-        operating_time = 0.2
+        rospy.logwarn("move from present xyz %.2f,%.2f,%.2f , moveDist %.2f  ", kinematics_pose.pose.position.x, \
+                       kinematics_pose.pose.position.y, kinematics_pose.pose.position.z, moveDist )   
+        
         try:
-            resp = self.set_kinematics_position_from_present(planning_group, end_effector_name, kinematics_pose, operating_time)            
+            #resp = self.set_kinematics_position_from_present(planning_group, end_effector_name, kinematics_pose, operating_time)            
+            resp = self.set_kinematics_position(planning_group, end_effector_name, kinematics_pose, operating_time) 
             print 'kinemetics resp1 {} time '.format(resp.is_planned, operating_time)
             rospy.sleep(0.1)
 
@@ -177,7 +188,7 @@ class TrakingObject():
 
     def objectCallback(self,msg):
         # init position
-        obejectNumList = [15,16] 
+        obejectNumList = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30] 
         #rospy.logwarn( 'objectCallback' )   
         data = msg.data
 
@@ -210,7 +221,7 @@ class TrakingObject():
                             qtBottomRight.x(), qtBottomRight.y())'''
             try:
                 #(trans,rot) = self.listener.lookupTransform('link1', 'object_'+str(id), rospy.Time(0))
-                (trans,rot) = self.listener.lookupTransform('link5', 'object_'+str(id), rospy.Time(0))
+                (trans,rot) = self.listener.lookupTransform('world', 'object_'+str(id), rospy.Time(0))
                 self.objectPose.header.stamp = rospy.get_rostime()
                 self.objectPose.pose.position.x = trans[0]
                 self.objectPose.pose.position.y = trans[1]
@@ -289,9 +300,13 @@ class TrakingObject():
         return resp         
 
     def movingObjectGazebo(self):
+        if rospy.is_shutdown():                     
+            threading.stop()
         while not rospy.is_shutdown(): 
             model = rospy.wait_for_message('gazebo/model_states', ModelStates)           
             for i in range(len(model.name)):
+                if rospy.is_shutdown():                     
+                    break
                 if model.name[i] == 'object0':
                     obstacle_1 = ModelState()
                     obstacle_1.model_name = model.name[i]
