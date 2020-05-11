@@ -47,4 +47,4 @@ roslaunch open_manipulator_controller open_manipulator_controller.launch
 roslaunch open_manipulator_find_object_2d object_detection.launch   
 roslaunch open_manipulator_find_object_2d tracking.launch    
 
-[![Video Label](http://img.youtube.com/vi/8QRUlfVLCyw/0.jpg)](https://youtu.be/rjLu_1BEWQ0?t=0s)   
+[![Video Label](http://img.youtube.com/vi/rjLu_1BEWQ0/0.jpg)](https://youtu.be/rjLu_1BEWQ0?t=0s)   
