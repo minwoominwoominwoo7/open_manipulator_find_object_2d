@@ -19,16 +19,23 @@ sudo apt-get install python-pyside
 5. Code install and build   
 https://github.com/minwoominwoominwoo7/open_manipulator_find_object_2d   
 
-## run pick example at gazebo   
-roscore  
-roslaunch open_manipulator_find_object_2d open_manipulator_gazebo.launch   
-!!!!!!!press play button at gazebo bottom !!!!!!!    
-roslaunch open_manipulator_controller open_manipulator_controller.launch use_platform:=false   
-roslaunch open_manipulator_find_object_2d object_detection.launch use_platform:=false  
-rosrun open_manipulator_find_object_2d pick_and_place   
+## run tracking example at real   
+roscore   
+roslaunch realsense2_camera rs_rgbd.launch     
+roslaunch open_manipulator_controller open_manipulator_controller.launch   
+roslaunch open_manipulator_find_object_2d object_detection.launch   
+roslaunch open_manipulator_find_object_2d tracking.launch    
 
-[![Video Label](http://img.youtube.com/vi/l1xk4SyJRwM/0.jpg)](https://youtu.be/l1xk4SyJRwM?t=0s)   
+[![Video Label](http://img.youtube.com/vi/rjLu_1BEWQ0/0.jpg)](https://youtu.be/rjLu_1BEWQ0?t=0s)   
 
+## run picking example at real   
+roscore   
+roslaunch realsense2_camera rs_rgbd.launch     
+roslaunch open_manipulator_controller open_manipulator_controller.launch   
+roslaunch open_manipulator_find_object_2d object_detection.launch   
+roslaunch open_manipulator_find_object_2d pick_and_place.launch 
+
+[![Video Label](http://img.youtube.com/vi/7y1d8E0-BJw/0.jpg)](https://youtu.be/7y1d8E0-BJw?t=0s)   
 
 ## run tracking example at gazebo   
 roscore  
@@ -40,11 +47,15 @@ roslaunch open_manipulator_find_object_2d tracking.launch use_platform:=false
 
 [![Video Label](http://img.youtube.com/vi/8QRUlfVLCyw/0.jpg)](https://youtu.be/8QRUlfVLCyw?t=0s) 
 
-## run tracking example at real   
-roscore   
-roslaunch realsense2_camera rs_rgbd.launch     
-roslaunch open_manipulator_controller open_manipulator_controller.launch   
-roslaunch open_manipulator_find_object_2d object_detection.launch   
-roslaunch open_manipulator_find_object_2d tracking.launch    
+## run pick example at gazebo   
+roscore  
+roslaunch open_manipulator_find_object_2d open_manipulator_picking_gazebo.launch gui:=true paused:=true   
+!!!!!!!press play button at gazebo bottom !!!!!!!    
+roslaunch open_manipulator_controller open_manipulator_controller.launch use_platform:=false   
+roslaunch open_manipulator_find_object_2d object_detection.launch use_platform:=false  
+rosrun open_manipulator_find_object_2d pick_and_place   
 
-[![Video Label](http://img.youtube.com/vi/rjLu_1BEWQ0/0.jpg)](https://youtu.be/rjLu_1BEWQ0?t=0s)   
+[![Video Label](http://img.youtube.com/vi/llVzT7IG0tE/0.jpg)](https://youtu.be/llVzT7IG0tE?t=0s)   
+
+
+

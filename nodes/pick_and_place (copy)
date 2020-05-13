@@ -57,13 +57,10 @@ class PickAndPlace():
         self.kinematicsStates = [0.0, 0.0, 0.0]
         self.open_manipulator_moving_state = "STOPPED"
         self.current_mode = self.CurrentMode.init.value
-        self.pickObjectPose = PoseStamped()
-        self.pickTargetPose = PoseStamped()    
-        self.placeObjectPose = PoseStamped()
-        self.placeTargetPose = PoseStamped()         
+        self.objectPose = PoseStamped()
+        self.targetPose = PoseStamped()
         self.is_triggered = False
         self.currentToolPose = Pose()
-        self.use_platform = rospy.get_param("~use_platform","true")
         
         self.set_joint_position = rospy.ServiceProxy('goal_joint_space_path', SetJointPosition)
         self.set_kinematics_position = rospy.ServiceProxy('goal_task_space_path_position_only', SetKinematicsPose)
@@ -105,19 +102,17 @@ class PickAndPlace():
 
         elif self.current_mode == self.CurrentMode.waitObject.value:  
             rospy.loginfo("waitObject mode")          
-            pick_object_detect_duration = rospy.get_rostime().to_sec() - self.pickObjectPose.header.stamp.to_sec()
-            place_object_detect_duration = rospy.get_rostime().to_sec() - self.placeObjectPose.header.stamp.to_sec()
-            rospy.logwarn("duration pick %.2f  , place %.2f ", pick_object_detect_duration , place_object_detect_duration )
-            if pick_object_detect_duration < 1 and place_object_detect_duration < 1 :
-                rospy.loginfo(" detect object ")
-                self.pickTargetPose = self.pickObjectPose
-                self.placeTargetPose = self.placeObjectPose
+            object_detect_duration = rospy.get_rostime().to_sec() - self.objectPose.header.stamp.to_sec()
+            rospy.logwarn("duration %.2f ",object_detect_duration )
+            if object_detect_duration < 1 :
+                rospy.loginfo("object detect mode")
                 self.current_mode = self.CurrentMode.move_to_pick.value
 
         elif self.current_mode == self.CurrentMode.move_to_pick.value: 
             rospy.loginfo("move_to_pick mode")  
             if self.moveToObject() :
-                self.current_mode = self.CurrentMode.close_object.value
+                #self.current_mode = self.CurrentMode.close_object.value
+                self.current_mode = self.CurrentMode.idle.value
                 rospy.loginfo("init pose ok")      
 
         elif self.current_mode == self.CurrentMode.close_object.value: 
@@ -137,95 +132,63 @@ class PickAndPlace():
             rospy.sleep(3)
             self.current_mode = self.CurrentMode.init.value
 
-    def objectCallback(self,msg):
+    def moveToPlace(self):
+        rospy.logwarn("move_to_place")
+
+        # close gripper 
+        joint_position = JointPosition()
+        joint_position.joint_name = ['gripper']  
+        joint_position.position =  [-0.01] #-0.01 0.01
+        resp = False
+        try:    
+            path_time = 1                    
+            resp = self.set_gripper_control("",joint_position, path_time)
+            rospy.sleep(path_time)
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e  
+        if not resp :
+            return False 
+
         # init position
-        pickObejectNumList = [100,101,102,103,104,105,106,107,108,109,110] 
-        placeObejectNumList = [1,2,3,4,5,6,7,8,9,10]
+        joint_position = JointPosition()
+        joint_position.joint_name = ['joint1','joint2','joint3','joint4']  
+        #joint_position.position =  [0.0, -1.05, 0.35, 0.70]   
+        joint_position.position =  [0.0, -1.791, 0.507, 1.438]     
+        resp = False    
+        try:    
+            path_time = 2                    
+            resp = self.set_joint_position("",joint_position, path_time)
+            rospy.sleep(path_time)
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e  
+        if not resp :
+            return False   
 
-        #rospy.logwarn( 'objectCallback' )   
-        data = msg.data
+        # open gripper 
+        joint_position = JointPosition()
+        joint_position.joint_name = ['gripper']  
+        joint_position.position =  [0.01] #-0.01 0.01
+        resp = False
+        try:    
+            path_time = 1                    
+            resp = self.set_gripper_control("",joint_position, path_time)
+            rospy.sleep(path_time)
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e  
+        if not resp :
+            return False 
 
-        for i in range(0,len(data),12):
-            id = int(data[i])
+        return True  
 
-            if id in pickObejectNumList : 
-                pass 
-            else:
-                rospy.loginfo("idle mode") 
-                continue                
 
-            objectWidth = data[i+1]
-            objectHeight = data[i+2]
-            qtHomography = QtGui.QTransform(data[i+3], data[i+4], data[i+5],
-					               data[i+6], data[i+7], data[i+8],
-					               data[i+9], data[i+10], data[i+11])
-            qtTopLeft = qtHomography.map(QtCore.QPointF(0,0));     
-            qtTopRight = qtHomography.map(QtCore.QPointF(objectWidth,0)); 
-            qtBottomLeft = qtHomography.map(QtCore.QPointF(0,objectHeight)); 
-            qtBottomRight = qtHomography.map(QtCore.QPointF(objectWidth,objectHeight)); 
-            centX = int(( qtTopLeft.x() + qtTopRight.x() + qtBottomLeft.x() + qtBottomRight.x() ) / 4)
-            centY = int(( qtTopLeft.y() + qtTopRight.y() + qtBottomLeft.y() + qtBottomRight.y() ) / 4)
-            '''rospy.loginfo("Object %d detected, CentX,Y ( %d , %d ) witdh ( %d , %d ),corners point at TopLeft (%.0f,%.0f) TopRight(%.0f,%.0f) BottomLeft(%.0f,%.0f) BottomRight(%.0f,%.0f)\n",
-                            id, centX, centY, objectWidth, objectWidth,
-                            qtTopLeft.x(), qtTopLeft.y(),
-                            qtTopRight.x(), qtTopRight.y(),
-                            qtBottomLeft.x(), qtBottomLeft.y(),
-                            qtBottomRight.x(), qtBottomRight.y())'''
-            try:
-                (trans,rot) = self.listener.lookupTransform('link1', 'object_'+str(id), rospy.Time(0))
-                self.pickObjectPose.header.stamp = rospy.get_rostime()
-                self.pickObjectPose.pose.position.x = trans[0]
-                self.pickObjectPose.pose.position.y = trans[1]
-                self.pickObjectPose.pose.position.z = trans[2]
-                #rospy.logwarn('ft of object_%s is  xyz( %.2f, %.2f, %.2f from link1 %.2f ', str(id), trans[0], trans[1], trans[2],self.pickObjectPose.header.stamp.to_sec())   
-            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-                rospy.logwarn('there is not tf of pickObject_%s ' , str(id) )
-
-        for i in range(0,len(data),12):
-            id = int(data[i])
-
-            if id in placeObejectNumList : 
-                pass 
-            else:
-                rospy.loginfo("idle mode") 
-                continue                
-
-            objectWidth = data[i+1]
-            objectHeight = data[i+2]
-            qtHomography = QtGui.QTransform(data[i+3], data[i+4], data[i+5],
-					               data[i+6], data[i+7], data[i+8],
-					               data[i+9], data[i+10], data[i+11])
-            qtTopLeft = qtHomography.map(QtCore.QPointF(0,0));     
-            qtTopRight = qtHomography.map(QtCore.QPointF(objectWidth,0)); 
-            qtBottomLeft = qtHomography.map(QtCore.QPointF(0,objectHeight)); 
-            qtBottomRight = qtHomography.map(QtCore.QPointF(objectWidth,objectHeight)); 
-            centX = int(( qtTopLeft.x() + qtTopRight.x() + qtBottomLeft.x() + qtBottomRight.x() ) / 4)
-            centY = int(( qtTopLeft.y() + qtTopRight.y() + qtBottomLeft.y() + qtBottomRight.y() ) / 4)
-            '''rospy.loginfo("Object %d detected, CentX,Y ( %d , %d ) witdh ( %d , %d ),corners point at TopLeft (%.0f,%.0f) TopRight(%.0f,%.0f) BottomLeft(%.0f,%.0f) BottomRight(%.0f,%.0f)\n",
-                            id, centX, centY, objectWidth, objectWidth,
-                            qtTopLeft.x(), qtTopLeft.y(),
-                            qtTopRight.x(), qtTopRight.y(),
-                            qtBottomLeft.x(), qtBottomLeft.y(),
-                            qtBottomRight.x(), qtBottomRight.y())'''
-            try:
-                (trans,rot) = self.listener.lookupTransform('link1', 'object_'+str(id), rospy.Time(0))
-                self.placeObjectPose.header.stamp = rospy.get_rostime()
-                self.placeObjectPose.pose.position.x = trans[0]
-                self.placeObjectPose.pose.position.y = trans[1]
-                self.placeObjectPose.pose.position.z = trans[2]
-                #rospy.logwarn('ft of object_%s is  xyz( %.2f, %.2f, %.2f from link1 %.2f ', str(id), trans[0], trans[1], trans[2],self.pickObjectPose.header.stamp.to_sec())   
-            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-                rospy.logwarn('there is not tf of placeObject_%s ' , str(id) )                
-
-    def moveToObject(self):
-        rospy.logwarn("move to object")
+    def closeToObject(self):
+        rospy.logwarn("close to object")
         resp = False
         end_effector_name = "gripper" 
         kinematics_pose = KinematicsPose()
-        planning_group = "arm"        
-        kinematics_pose.pose = self.pickTargetPose.pose
-        kinematics_pose.pose.position = self.forwardObjectPosition( kinematics_pose.pose.position, -0.05 )
-        kinematics_pose.pose.position.z += 0.03
+        planning_group = "arm"
+        kinematics_pose.pose = self.targetPose.pose
+        kinematics_pose.pose.position = self.forwardObjectPosition( kinematics_pose.pose.position, 0.03 )
 
         moveDistance = math.sqrt((kinematics_pose.pose.position.x - self.currentToolPose.position.x)**2 
                                + (kinematics_pose.pose.position.y - self.currentToolPose.position.y)**2       
@@ -256,23 +219,58 @@ class PickAndPlace():
 
         return resp
 
+    def objectCallback(self,msg):
+        # init position
+        obejectNumList = [15,16] 
 
-    def closeToObject(self):
-        rospy.logwarn("close to object")
+        #rospy.logwarn( 'objectCallback' )   
+        data = msg.data
+
+        for i in range(0,len(data),12):
+            id = int(data[i])
+
+            if id in obejectNumList : 
+                pass 
+            else:
+                rospy.loginfo("idle mode") 
+                continue                
+
+            objectWidth = data[i+1]
+            objectHeight = data[i+2]
+            qtHomography = QtGui.QTransform(data[i+3], data[i+4], data[i+5],
+					               data[i+6], data[i+7], data[i+8],
+					               data[i+9], data[i+10], data[i+11])
+            qtTopLeft = qtHomography.map(QtCore.QPointF(0,0));     
+            qtTopRight = qtHomography.map(QtCore.QPointF(objectWidth,0)); 
+            qtBottomLeft = qtHomography.map(QtCore.QPointF(0,objectHeight)); 
+            qtBottomRight = qtHomography.map(QtCore.QPointF(objectWidth,objectHeight)); 
+            centX = int(( qtTopLeft.x() + qtTopRight.x() + qtBottomLeft.x() + qtBottomRight.x() ) / 4)
+            centY = int(( qtTopLeft.y() + qtTopRight.y() + qtBottomLeft.y() + qtBottomRight.y() ) / 4)
+            '''rospy.loginfo("Object %d detected, CentX,Y ( %d , %d ) witdh ( %d , %d ),corners point at TopLeft (%.0f,%.0f) TopRight(%.0f,%.0f) BottomLeft(%.0f,%.0f) BottomRight(%.0f,%.0f)\n",
+                            id, centX, centY, objectWidth, objectWidth,
+                            qtTopLeft.x(), qtTopLeft.y(),
+                            qtTopRight.x(), qtTopRight.y(),
+                            qtBottomLeft.x(), qtBottomLeft.y(),
+                            qtBottomRight.x(), qtBottomRight.y())'''
+            try:
+                (trans,rot) = self.listener.lookupTransform('link1', 'object_'+str(id), rospy.Time(0))
+                self.objectPose.header.stamp = rospy.get_rostime()
+                self.objectPose.pose.position.x = trans[0]
+                self.objectPose.pose.position.y = trans[1]
+                self.objectPose.pose.position.z = trans[2]
+                #rospy.logwarn('ft of object_%s is  xyz( %.2f, %.2f, %.2f from link1 %.2f ', str(id), trans[0], trans[1], trans[2],self.objectPose.header.stamp.to_sec())   
+            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                rospy.logwarn('there is not tf of object_%s ' , str(id) )
+
+    def moveToObject(self):
+        rospy.logwarn("move to object")
         resp = False
         end_effector_name = "gripper" 
         kinematics_pose = KinematicsPose()
         planning_group = "arm"
-        kinematics_pose.pose = self.pickTargetPose.pose
-        kinematics_pose.pose.position = self.forwardObjectPosition( kinematics_pose.pose.position, 0.03 )
-        if self.use_platform :
-            rospy.logwarn("??????1")
-            kinematics_pose.pose.position.z += 0.05
-        else :
-            rospy.logwarn("??????2")
-            kinematics_pose.pose.position.z -= 0.05
-
-        kinematics_pose.pose.position.y += 0.005
+        self.targetPose = self.objectPose
+        kinematics_pose.pose = self.targetPose.pose
+        kinematics_pose.pose.position = self.forwardObjectPosition( kinematics_pose.pose.position, -0.05 )
 
         moveDistance = math.sqrt((kinematics_pose.pose.position.x - self.currentToolPose.position.x)**2 
                                + (kinematics_pose.pose.position.y - self.currentToolPose.position.y)**2       
@@ -301,81 +299,7 @@ class PickAndPlace():
             print "Service call failed: %s"%e
             return False
 
-        return resp        
-
-    def moveToPlace(self):
-        rospy.logwarn("move_to_place")
-
-        # close gripper 
-        joint_position = JointPosition()
-        joint_position.joint_name = ['gripper']  
-        joint_position.position =  [-0.01] #-0.01 0.01
-        resp = False
-        try:    
-            path_time = 1                    
-            resp = self.set_gripper_control("",joint_position, path_time)
-            rospy.sleep(path_time)
-        except rospy.ServiceException, e:
-            print "Service call failed: %s"%e  
-        if not resp :
-            return False 
-        
-        # initial pose
-        self.setBackwardPose2()    
-
-        # go place position
-        rospy.logwarn("go to place")
-        resp = False
-        end_effector_name = "gripper" 
-        kinematics_pose = KinematicsPose()
-        planning_group = "arm"
-        kinematics_pose.pose = self.placeTargetPose.pose
-        kinematics_pose.pose.position = self.forwardObjectPosition( kinematics_pose.pose.position, 0.03 )
-        kinematics_pose.pose.position.z += 0.13
-        kinematics_pose.pose.position.x += 0.015
-
-        moveDistance = math.sqrt((kinematics_pose.pose.position.x - self.currentToolPose.position.x)**2 
-                               + (kinematics_pose.pose.position.y - self.currentToolPose.position.y)**2       
-                               + (kinematics_pose.pose.position.z - self.currentToolPose.position.z)**2 )
-
-        #distance 0.3 m -> 3 sec operate time 
-        #distance 0.1 m -> 1 sec operate time        
-
-        operating_time = moveDistance * 10
-        operating_limit_time = operating_time
-
-        if operating_time < 1 :
-            operating_limit_time = 1
-        elif operating_time > 3 :
-            operating_limit_time = 3        
-
-        rospy.logwarn("go xyz %.2f,%.2f,%.2f , moveDistance %.2f, operate time %.2f ( %.2f )" ,\
-                       kinematics_pose.pose.position.x, kinematics_pose.pose.position.y, kinematics_pose.pose.position.z, \
-                       moveDistance, operating_time , operating_limit_time)       
-
-        try:
-            resp = self.set_kinematics_position(planning_group, end_effector_name, kinematics_pose, operating_time)
-            print 'kinemetics resp1 {} time '.format(resp.is_planned, operating_time)
-            rospy.sleep(operating_time)
-        except rospy.ServiceException, e:
-            print "Service call failed: %s"%e
-            return False             
-
-        # open gripper 
-        joint_position = JointPosition()
-        joint_position.joint_name = ['gripper']  
-        joint_position.position =  [0.01] #-0.01 0.01
-        resp = False
-        try:    
-            path_time = 1                    
-            resp = self.set_gripper_control("",joint_position, path_time)
-            rospy.sleep(path_time)
-        except rospy.ServiceException, e:
-            print "Service call failed: %s"%e  
-        if not resp :
-            return False 
-
-        return True          
+        return resp
 
     def forwardObjectPosition( self, objectPosition, forward_distance ):
         resultPoint = Point()
@@ -455,26 +379,7 @@ class PickAndPlace():
         if not resp :
             return False 
 
-        return True         
-
-    def setBackwardPose2(self):
-        rospy.logwarn("setInitPose")
-        # init position
-        joint_position = JointPosition()
-        joint_position.joint_name = ['joint1','joint2','joint3','joint4']  
-        #joint_position.position =  [0.0, -1.05, 0.35, 0.70]   
-        joint_position.position =  [0.0, -1.791, 0.507, 1.438]     
-        resp = False    
-        try:    
-            path_time = 2                    
-            resp = self.set_joint_position("",joint_position, path_time)
-            rospy.sleep(path_time)
-        except rospy.ServiceException, e:
-            print "Service call failed: %s"%e  
-        if not resp :
-            return False               
-
-        return True              
+        return True          
 
     def kinematicsPoseCallback(self, msg):
         self.kinematicsStates[0] = msg.pose.position.x

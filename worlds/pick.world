@@ -72,5 +72,11 @@
       <static>1</static>
     </include>
 
+    <include>
+      <pose frame=''>0.268810 -0.084509 0.090382 0 0 -0.378485</pose>
+      <uri>model://pick_box</uri>
+      <static>1</static>
+    </include>    
+
   </world>
 </sdf>
